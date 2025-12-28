@@ -21,6 +21,156 @@ To understand the full DevSecOps and SonarQube flow, the following sessions are 
 1. Modern SDLC Explained | Build Automation & Real-World Insights
 2. CI/CD Explained | How Pipelines Work & Branching Strategies
 
+### Install
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install openjdk-17-jdk -y
+java -version
+```
+
+#### Configure Linux Kernel Limits
+
+```bash
+sudo vi /etc/sysctl.conf
+# Add
+vm.max_map_count=524288
+fs.file-max=131072
+# Check
+sudo sysctl -p
+```
+
+#### User limits
+
+```bash
+sudo vi /etc/security/limits.conf
+# Add
+sonarqube   -   nofile   131072
+sonarqube   -   nproc    8192
+```
+
+#### Install PostgreSQL
+
+```bash
+sudo apt install postgresql postgresql-contrib -y
+```
+
+#### Create SonarQube DB & User
+
+```bash
+sudo -i -u postgres
+```
+
+```bash
+CREATE DATABASE sonarqube;
+CREATE USER sonar WITH ENCRYPTED PASSWORD 'Sql@054003';
+GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;
+\q
+```
+
+#### Create SonarQube User
+
+```bash
+sudo useradd -m -d /opt/sonarqube -s /bin/bash sonarqube
+```
+
+#### Download & Install SonarQube
+
+```bash
+cd /opt
+sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.3.79811.zip
+sudo apt install unzip -y
+sudo unzip sonarqube-9.9.3.79811.zip
+sudo mv sonarqube-9.9.3.79811 sonarqube
+sudo chown -R sonarqube:sonarqube /opt/sonarqube
+```
+
+#### Configure SonarQube Database
+
+```bash
+sudo vi /opt/sonarqube/conf/sonar.properties
+```
+
+```bash
+sonar.jdbc.username=sonar
+sonar.jdbc.password=Sql@054003
+sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube
+
+sonar.web.host=0.0.0.0
+sonar.web.port=9000
+```
+
+#### Create systemd Service
+
+```bash
+sudo nano /etc/systemd/system/sonarqube.service
+```
+
+```bash
+# For linux-x86-64 image
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+User=sonarqube
+Group=sonarqube
+Restart=always
+LimitNOFILE=131072
+LimitNPROC=8192
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# For linux-aarch64
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/sonarqube/bin/linux-aarch64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-aarch64/sonar.sh stop
+User=sonarqube
+Group=sonarqube
+Restart=always
+LimitNOFILE=131072
+LimitNPROC=8192
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Start SonarQube
+
+```bash
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable sonarqube
+sudo systemctl start sonarqube
+sudo systemctl status sonarqube
+```
+
+#### Open Firewall
+
+```bash
+sudo ufw allow 9000/tcp
+sudo ufw reload
+```
+
+#### Access SonarQube
+
+```bash
+http://<server-ip>:9000
+Username: `admin`
+Password: `admin`
+```
+
 ### What is DevSecOps and why it is important
 
 #### What is DevSecOps?
