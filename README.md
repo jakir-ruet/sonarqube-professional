@@ -62,6 +62,10 @@ sudo -i -u postgres
 ```
 
 ```bash
+psql
+```
+
+```bash
 CREATE DATABASE sonarqube;
 CREATE USER sonar WITH ENCRYPTED PASSWORD 'Sql@054003';
 GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;
@@ -100,10 +104,15 @@ sonar.web.host=0.0.0.0
 sonar.web.port=9000
 ```
 
+```bash
+sudo ufw allow 9000/tcp
+sudo ufw reload
+```
+
 #### Create systemd Service
 
 ```bash
-sudo nano /etc/systemd/system/sonarqube.service
+sudo vi /etc/systemd/system/sonarqube.service
 ```
 
 ```bash
@@ -127,15 +136,15 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# For linux-aarch64
+# For macosx-universal-64
 [Unit]
 Description=SonarQube service
 After=syslog.target network.target
 
 [Service]
 Type=forking
-ExecStart=/opt/sonarqube/bin/linux-aarch64/sonar.sh start
-ExecStop=/opt/sonarqube/bin/linux-aarch64/sonar.sh stop
+ExecStart=/opt/sonarqube/bin/macosx-universal-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/macosx-universal-64/sonar.sh stop
 User=sonarqube
 Group=sonarqube
 Restart=always
@@ -154,13 +163,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable sonarqube
 sudo systemctl start sonarqube
 sudo systemctl status sonarqube
-```
-
-#### Open Firewall
-
-```bash
-sudo ufw allow 9000/tcp
-sudo ufw reload
 ```
 
 #### Access SonarQube
