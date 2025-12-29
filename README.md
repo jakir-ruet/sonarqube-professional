@@ -25,91 +25,108 @@ To understand the full DevSecOps and SonarQube flow, the following sessions are 
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install openjdk-17-jdk -y
+sudo apt install -y unzip wget curl gnupg2
+sudo apt install -y openjdk-17-jdk
 java -version
 ```
 
-#### Configure Linux Kernel Limits
+#### Kernel & OS tuning (Critical for production)
 
 ```bash
-sudo vi /etc/sysctl.conf
-# Add
-vm.max_map_count=524288
-fs.file-max=131072
-# Check
-sudo sysctl -p
-```
-
-#### User limits
-
-```bash
-sudo vi /etc/security/limits.conf
-# Add
-sonarqube   -   nofile   131072
-sonarqube   -   nproc    8192
-```
-
-#### Install PostgreSQL
-
-```bash
-sudo apt install postgresql postgresql-contrib -y
-```
-
-#### Create SonarQube DB & User
-
-```bash
-sudo -i -u postgres
+sudo sysctl -w vm.max_map_count=262144
+echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-sonarqube.conf
+sudo sysctl --system
 ```
 
 ```bash
-psql
+sysctl vm.max_map_count
+```
+
+#### File limits
+
+```bash
+sudo tee -a /etc/security/limits.conf <<EOF
+sonarqube   -   nofile   65536
+sonarqube   -   nproc    4096
+EOF
+```
+
+#### Ensure PAM loads limits
+
+```bash
+sudo sed -i '/pam_limits.so/!b;$a session required pam_limits.so' /etc/pam.d/common-session
+```
+
+#### Install PostgreSQL (production safe)
+
+```bash
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+```
+
+#### Create database & user
+
+```bash
+sudo -u postgres psql
 ```
 
 ```bash
 CREATE DATABASE sonarqube;
 CREATE USER sonar WITH ENCRYPTED PASSWORD 'Sql@054003';
-GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;
+ALTER DATABASE sonarqube OWNER TO sonar;
 \q
 ```
 
-#### Create SonarQube User
+#### To access PostgreSQL
 
 ```bash
-sudo useradd -m -d /opt/sonarqube -s /bin/bash sonarqube
+sudo -i -u postgres
+psql
+```
+
+> Important notes:
+
+- Never try to connect as `root` to PostgreSQL; it doesn’t exist by default.
+- Always use `postgres` user for administrative tasks.
+- SonarQube will use the `sonar` database user, not root.
+
+#### Download SonarQube LTS
+
+```bash
+sudo useradd --system --no-create-home --shell /bin/bash sonarqube
 ```
 
 #### Download & Install SonarQube
 
 ```bash
 cd /opt
-sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.3.79811.zip
-sudo apt install unzip -y
-sudo unzip sonarqube-9.9.3.79811.zip
-sudo mv sonarqube-9.9.3.79811 sonarqube
+sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.4.87374.zip
+sudo unzip sonarqube-9.9.4.87374.zip
+sudo mv sonarqube-9.9.4.87374 sonarqube
 sudo chown -R sonarqube:sonarqube /opt/sonarqube
 ```
 
-#### Configure SonarQube Database
+#### Configure SonarQube (production)
 
 ```bash
 sudo vi /opt/sonarqube/conf/sonar.properties
 ```
 
 ```bash
+# For database
 sonar.jdbc.username=sonar
 sonar.jdbc.password=Sql@054003
-sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube
-
+sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+# Web binding
 sonar.web.host=0.0.0.0
 sonar.web.port=9000
+# Performance tuning (recommended)
+sonar.web.javaOpts=-Xms512m -Xmx1024m
+sonar.ce.javaOpts=-Xms512m -Xmx1024m
 ```
 
-```bash
-sudo ufw allow 9000/tcp
-sudo ufw reload
-```
-
-#### Create systemd Service
+#### Create systemd service (PRODUCTION STANDARD)
 
 ```bash
 sudo vi /etc/systemd/system/sonarqube.service
@@ -119,7 +136,7 @@ sudo vi /etc/systemd/system/sonarqube.service
 # For linux-x86-64 image
 [Unit]
 Description=SonarQube service
-After=syslog.target network.target
+After=network.target postgresql.service
 
 [Service]
 Type=forking
@@ -128,8 +145,8 @@ ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
 User=sonarqube
 Group=sonarqube
 Restart=always
-LimitNOFILE=131072
-LimitNPROC=8192
+LimitNOFILE=65536
+LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target
@@ -139,7 +156,7 @@ WantedBy=multi-user.target
 # For macosx-universal-64
 [Unit]
 Description=SonarQube service
-After=syslog.target network.target
+After=network.target postgresql.service
 
 [Service]
 Type=forking
@@ -148,8 +165,8 @@ ExecStop=/opt/sonarqube/bin/macosx-universal-64/sonar.sh stop
 User=sonarqube
 Group=sonarqube
 Restart=always
-LimitNOFILE=131072
-LimitNPROC=8192
+LimitNOFILE=65536
+LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target
@@ -158,11 +175,25 @@ WantedBy=multi-user.target
 #### Start SonarQube
 
 ```bash
-sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 sudo systemctl enable sonarqube
 sudo systemctl start sonarqube
 sudo systemctl status sonarqube
+```
+
+#### Firewall (production safe)
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 9000/tcp
+sudo ufw enable
+```
+
+#### Verify startup
+
+```bash
+ss -lntp | grep 9000
+tail -f /opt/sonarqube/logs/sonar.log # Should see SonarQube is up
 ```
 
 #### Access SonarQube
@@ -171,6 +202,14 @@ sudo systemctl status sonarqube
 http://<server-ip>:9000
 Username: `admin`
 Password: `admin`
+```
+
+##### Change credentials
+
+```bash
+http://<server-ip>:9000
+Username: `Admin@054003`
+Password: `Admin@054003`
 ```
 
 ### What is DevSecOps and why it is important
@@ -546,3 +585,4 @@ sonar-scanner \
 [facebook-url-jakir]: https://www.facebook.com/jakir.ruet/
 [youtube-shield-jakir]: https://img.shields.io/badge/YouTube-%23FF0000.svg?style=for-the-badge&logo=YouTube&logoColor=white
 [youtube-url-jakir]: https://www.youtube.com/@mjakaria-ruet/featured
+
