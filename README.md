@@ -68,7 +68,7 @@ sudo systemctl start postgresql
 #### Create database & user
 
 ```bash
-sudo -u postgres psql
+sudo -u postgres psql # access PostgreSQL as `postgres` user
 ```
 
 ```bash
@@ -76,13 +76,6 @@ CREATE DATABASE sonarqube;
 CREATE USER sonar WITH ENCRYPTED PASSWORD 'Sql@054003';
 ALTER DATABASE sonarqube OWNER TO sonar;
 \q
-```
-
-#### To access PostgreSQL
-
-```bash
-sudo -i -u postgres
-psql
 ```
 
 > Important notes:
@@ -94,7 +87,9 @@ psql
 #### Download SonarQube LTS
 
 ```bash
+# From root user
 sudo useradd --system --no-create-home --shell /bin/bash sonarqube
+sudo chown -R sonarqube:sonarqube /opt/sonarqube
 ```
 
 #### Download & Install SonarQube
@@ -126,7 +121,7 @@ sonar.web.javaOpts=-Xms512m -Xmx1024m
 sonar.ce.javaOpts=-Xms512m -Xmx1024m
 ```
 
-#### Create systemd service (PRODUCTION STANDARD)
+#### Create systemd service (Production Standard)
 
 ```bash
 sudo vi /etc/systemd/system/sonarqube.service
@@ -585,4 +580,3 @@ sonar-scanner \
 [facebook-url-jakir]: https://www.facebook.com/jakir.ruet/
 [youtube-shield-jakir]: https://img.shields.io/badge/YouTube-%23FF0000.svg?style=for-the-badge&logo=YouTube&logoColor=white
 [youtube-url-jakir]: https://www.youtube.com/@mjakaria-ruet/featured
-
